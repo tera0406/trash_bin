@@ -58,6 +58,17 @@
 
 確保 Python 3.8+ 已安裝，並設定虛擬環境：
 
+### 1a. 環境變數設定 (重要)
+
+本專案使用 `.env` 檔案來管理敏感設定 (如 Google Gemini API Key)。GitHub 上僅會上傳範本檔 `.env.example`。
+
+1.  **複製範本**: 將 `.env.example` 複製一份並重新命名為 `.env`。
+2.  **填寫設定**: 打開 `.env` 檔案，將 `GOOGLE_API_KEY` 填入您的實際金鑰。
+    ```ini
+    GOOGLE_API_KEY=AIzaSy... (您的金鑰)
+    ```
+    *其他參數 (如權重、模型路徑) 可維持預設值。*
+
 ```bash
 # 啟動虛擬環境 (Windows)
 .venv\Scripts\Activate.ps1
