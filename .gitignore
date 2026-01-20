@@ -1,0 +1,148 @@
+# ==================== Python ====================
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# ==================== IDE ====================
+# VS Code
+.vscode/
+*.code-workspace
+
+# PyCharm
+.idea/
+*.iml
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# ==================== 環境變數與機密 ====================
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+
+# ==================== 模型檔案 ====================
+# 大型模型檔案 (可選，若需要版本控制則移除)
+*.h5
+*.hdf5
+*.pb
+*.onnx
+*.pt
+*.pth
+*.ckpt
+*.weights
+
+# 模型目錄 (可選)
+pc_inference/models/*.h5
+pc_inference/models/*.hdf5
+
+# ==================== 資料檔案 ====================
+# 原始資料
+data/raw/*
+!data/raw/.gitkeep
+
+# 處理後的資料
+data/processed/*
+!data/processed/.gitkeep
+
+# 實驗結果
+experiments/results/*
+!experiments/results/.gitkeep
+
+# 日誌檔案
+logs/**/*.log
+logs/**/*.txt
+logs/events/*
+!logs/events/.gitkeep
+
+# ==================== 系統檔案 ====================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+
+# ==================== Arduino/ESP32 ====================
+# Arduino 編譯檔案
+esp32_actuator/*.hex
+esp32_actuator/*.elf
+esp32_actuator/build/
+esp32_actuator/.pio/
+
+# ==================== 臨時檔案 ====================
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+.cache/
+
+# ==================== 其他 ====================
+# 備份檔案
+*.bak
+*.backup
+
+# 壓縮檔 (可選)
+*.zip
+*.tar.gz
+*.rar

@@ -1,0 +1,15 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# Custom for this project
+# Force unix-style line endings for python scripts (better for cross-platform/Pi)
+*.py text eol=lf
+*.js text eol=lf
+*.sh text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.txt text eol=lf
+
+# Keep Windows-specific files as CRLF
+*.bat text eol=crlf
+*.ps1 text eol=crlf
