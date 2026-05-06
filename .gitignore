@@ -146,3 +146,5 @@ esp32_actuator/.pio/
 *.zip
 *.tar.gz
 *.rar
+# Ignore large model files
+pc_server/models/*.keras

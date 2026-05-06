@@ -1,0 +1,27 @@
+# Web Framework
+flask>=2.3.0
+flask-cors>=4.0.0
+
+# Deep Learning
+tensorflow>=2.13.0
+keras>=2.13.0
+
+# Scientific Computing
+numpy>=1.24.0
+
+# Audio Processing
+librosa>=0.10.0
+soundfile>=0.12.0
+
+# Image Processing
+Pillow>=10.0.0
+opencv-python>=4.8.0
+
+# Cloud AI (Gemini)
+google-genai>=0.1.0
+
+# Configuration
+python-dotenv>=1.0.0
+
+# HTTP Communication
+requests>=2.31.0

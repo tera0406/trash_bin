@@ -4,58 +4,102 @@
 
 ## 1. 專案架構與職責限制 (Strict Layering)
 
-### 【層級 1: pc_inference/】
-- [cite_start]**硬體**: 高效能 PC / Laptop [cite: 248]。
-- [cite_start]**任務**: 執行 EfficientNet 影像辨識、音訊頻譜分析與多模態融合 [cite: 187, 199, 244, 246]。
-- **限制**: 
-    - [cite_start]必須提供信心值 (Confidence Score) [cite: 127, 200]。
-    - [cite_start]透過 Socket/HTTP 傳輸 JSON 給 Raspberry Pi [cite: 197]。
-- **技術棧**: Python, TensorFlow/Keras, Flask/FastAPI.
+### 【層級 1: pc_server/】
+- **硬體**: 高效能 PC / Laptop。
+- **任務**: 執行多模態交叉融合 (Cross-Fusion) 推論，整合 Gemini 雲端備援與生產資料收集。
+- **核心檔案**:
+    - `app.py`: Flask Inference Server，提供 `/predict` API。
+    - `gemini_fallback.py`: Gemini 備援模組 (CoT + 優雅降級)。
+    - `models/best_multimodal_model.keras`: 雙輸入交叉融合模型。
+    - `data/raw/{label}/`: 生產資料收集目錄。
+- **限制**:
+    - 必須提供信心值 (Confidence Score)。
+    - Gemini 備援判斷門檻由本層的 `.env` 管理，**不由 Pi 決定**。
+    - 透過 HTTP 傳輸 JSON 給 Raspberry Pi。
+- **技術棧**: Python, TensorFlow/Keras, Flask, google-genai.
 
-### 【層級 2: pi_fsm/】
-- [cite_start]**硬體**: Raspberry Pi [cite: 103]。
-- [cite_start]**任務**: 系統核心決策中心 (FSM 狀態機) [cite: 39, 103, 107]。
-- **限制**: 
+### 【層級 2: pi_client/】
+- **硬體**: Raspberry Pi。
+- **任務**: 感測器控制、影像與音訊擷取、流程決策、致動器控制。
+- **核心檔案**:
+    - `pi_remote_controller.py`: 主執行腳本。
+    - `pc_client.py`: 封裝與 PC Server 的 HTTP 通訊。
+    - `esp32_uart.py`: UART 指令封包化與傳送。
+- **限制**:
     - **絕對禁止** 執行 AI 推論模型 (僅接收結果)。
-    - [cite_start]負責 UART 指令封包化 (cmd_id, params, CRC) [cite: 114, 137, 138]。
-    - [cite_start]管理 Gemini 雲端備援判斷門檻 [cite: 51, 130]。
-- **技術棧**: Python, `pyserial`.
+    - **絕對禁止** 在本層判斷是否調用 Gemini (由 PC 層負責)。
+    - 負責 UART 指令封包化 (cmd_id, params)。
+- **技術棧**: Python, `pyserial`, `requests`, `opencv-python`.
 
-### 【層級 3: esp32_actuator/】
-- [cite_start]**硬體**: ESP32 / NodeMCU-32S [cite: 108]。
-- [cite_start]**任務**: 接收指令並控制 2-DOF 雲台 (Pitch/Yaw) [cite: 146, 148, 296, 322]。
-- **限制**: 
+### 【層級 3: esp32_firmware/】
+- **硬體**: ESP32 / NodeMCU-32S。
+- **任務**: 接收指令並控制伺服馬達與實體開關。
+- **限制**:
     - **絕對禁止** 進行邏輯決策或 AI。
-    - [cite_start]必須回傳 ACK、完成訊號或錯誤碼 (ERR_CODE) [cite: 112, 117]。
-    - [cite_start]包含安全檢查：超時、限速、回歸中立姿態 [cite: 111, 151, 323]。
+    - 必須回傳 ACK、完成訊號或錯誤碼。
+    - 包含安全檢查：超時、限速、回歸中立姿態。
 - **技術棧**: Arduino/C++.
+
+### 【legacy/】
+- 封存舊版 Late Fusion 架構，僅供學術參考，**不可在新功能中引用**。
+- `app_legacy.py`: 舊版加權融合伺服器。
+- `src/`: 舊版獨立推論引擎。
 
 ---
 
 ## 2. 通訊協議規範 (Interface Contract)
 
-### PC <-> Pi (Network)
-- 格式: JSON.
-- [cite_start]內容: `{"class": "A", "confidence": 0.95, "multimodal_status": true}` [cite: 163, 200, 236]。
+### Pi -> PC (HTTP POST, multipart/form-data)
+```
+POST /predict
+  image      : 影像二進位檔案 (必填)
+  audio_spec : 音訊頻譜二進位檔案 (選填)
+```
+
+### PC -> Pi (HTTP Response, JSON)
+```json
+{
+  "label"      : "paper",
+  "confidence" : 0.95,
+  "is_gemini"  : false,
+  "reasoning"  : "Local cross-fusion inference sufficient.",
+  "latency_ms" : 42.5,
+  "status"     : "success"
+}
+```
+- `label` 值域: `paper` / `plastic` / `general` / `metal` (全小寫)
+- `is_gemini=true` 表示本次由 Gemini CoT 提供結果
 
 ### Pi <-> ESP32 (UART Serial)
-- [cite_start]格式: 文字型指令 (例如: `MOVE:P:45:Y:0\n`) 或二進制封包 [cite: 114]。
-- [cite_start]參數: Pitch (-θp 到 +θp), Yaw (-θy 到 +θy) [cite: 149, 150, 153, 154, 155, 156]。
+- 格式: 文字型指令 (例如: `MOVE:P:45:Y:0\n`) 或二進制封包。
+- 參數: Pitch / Yaw 角度。
 
 ---
 
-## 3. Tera's Gem Coding 規範
+## 3. 關鍵環境變數 (.env)
+
+| 參數 | 說明 | 預設值 |
+|---|---|---|
+| `GOOGLE_API_KEY` | Gemini API 金鑰 (必填) | — |
+| `CONFIDENCE_THRESHOLD` | 低於此值觸發 Gemini 備援 | `0.50` |
+| `GEMINI_MODEL_NAME` | Gemini 模型名稱 | `gemini-2.0-flash` |
+| `DATA_COLLECTION` | 啟用生產資料收集 | `false` |
+
+---
+
+## 4. Tera's Gem Coding 規範
 
 1. **Step-by-step**: 針對 Tera 經驗有限的情況，所有複雜邏輯必須分拆成可單獨驗證的小區塊。
-2. **大量註解**: 程式碼需逐行解釋「為何這樣寫」以及「對應專案計畫書哪個部分」。
-3. [cite_start]**錯誤處理**: 必須包含 FSM 中的 RECOVER (復原) 流程與超時機制 [cite: 47, 91, 324]。
-4. **極簡風格**: 禁止廢話，直接給出可執行的 MVP (最小可行性產品) 程式碼。
+2. **大量註解**: 程式碼需解釋「為何這樣寫」，關鍵參數需說明對應的 .env 設定。
+3. **錯誤處理**: 必須包含超時機制與優雅降級 (如 Gemini 失敗 → 使用本地結果)。
+4. **極簡風格**: 禁止廢話，直接給出可執行的程式碼。
 
 ---
 
-## 4. 專題研究關鍵變因
+## 5. 專題研究關鍵變因
 
-在撰寫程式碼時，應預留以下實驗參數接口：
-- [cite_start]影像與聲音的權衡權重 [cite: 178, 246]。
-- [cite_start]動態信心度閾值 (Confidence Threshold T) [cite: 204, 251]。
-- [cite_start]雲台傾倒角度與保持時間 [cite: 157, 394]。
+在撰寫程式碼時，應預留以下實驗參數接口（皆從 `.env` 讀取，不寫死）：
+- 動態信心度閾值 `CONFIDENCE_THRESHOLD`。
+- Gemini 模型選擇 `GEMINI_MODEL_NAME`。
+- 生產資料收集開關 `DATA_COLLECTION`。
+- 雲台傾倒角度與保持時間 (ESP32 固件層參數)。
