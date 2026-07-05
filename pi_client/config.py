@@ -102,6 +102,10 @@ AUDIO_LOWPASS_CUTOFF = float(os.getenv("AUDIO_LOWPASS_CUTOFF", "0.0"))
 AUDIO_NORM_MIN_THRESHOLD = float(os.getenv("AUDIO_NORM_MIN_THRESHOLD", "1e-5"))
 AUDIO_NORM_MAX_GAIN = float(os.getenv("AUDIO_NORM_MAX_GAIN", "100.0"))
 
+# 麥克風特定搜尋名稱關鍵字或固定 ID (例如 "ATR4650" 或 1)
+# 設為 None 時，會使用自動探測
+AUDIO_DEVICE_TARGET = os.getenv("AUDIO_DEVICE_TARGET", "ATR4650")
+
 
 # ──────────────── 4. PC 推論伺服器設定 ────────────────
 PC_SERVER_IP = os.getenv("PC_SERVER_IP", "192.168.31.18")

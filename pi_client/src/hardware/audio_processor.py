@@ -27,17 +27,54 @@ def find_best_input_device():
     """
     動態搜尋系統中最適合的錄音設備 ID。
     優先順序：
-    1. 包含 "voicehat", "respeaker", "usb", "mic", "microphone", "proto" 等關鍵字的輸入設備
-    2. 系統預設的輸入設備 (kind='input')
-    3. 設備列表中第一個支援輸入的實體設備
-    4. 回退預設值 1
+    1. 若 config 中有設定 AUDIO_DEVICE_TARGET，且為數字，直接使用該 ID
+    2. 若 config 中有設定 AUDIO_DEVICE_TARGET，且為字串，優先搜尋設備名稱包含該關鍵字的 ID
+    3. 包含 "voicehat", "respeaker", "usb", "mic", "microphone", "proto" 等關鍵字的輸入設備
+    4. 系統預設的輸入設備 (kind='input')
+    5. 設備列表中第一個支援輸入的實體設備
+    6. 回退預設值 1
     """
     if not HAS_SOUNDDEVICE:
         return 1
+        
+    # 嘗試從 config 取得目標設備名稱或 ID
+    target = None
+    try:
+        from config import AUDIO_DEVICE_TARGET
+        target = AUDIO_DEVICE_TARGET
+    except ImportError:
+        import os
+        parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        if parent_dir not in sys.path:
+            sys.path.insert(0, parent_dir)
+        try:
+            from config import AUDIO_DEVICE_TARGET
+            target = AUDIO_DEVICE_TARGET
+        except ImportError:
+            pass
+            
+    # 如果 target 是數字，直接轉成 int 回傳
+    if target is not None:
+        try:
+            return int(target)
+        except ValueError:
+            # 說明是字串關鍵字，例如 "ATR4650"
+            pass
+
     try:
         devices = sd.query_devices()
         
-        # 1. 優先匹配常見的麥克風硬體關鍵字
+        # 1. 優先搜尋指定的目標設備關鍵字
+        if target and isinstance(target, str) and target.strip():
+            target_lower = target.lower()
+            for idx, dev in enumerate(devices):
+                if dev.get('max_input_channels', 0) > 0:
+                    name_lower = dev.get('name', '').lower()
+                    if target_lower in name_lower:
+                        print(f"[Audio] 🔍 匹配到指定的目標麥克風 ({target}): ID {idx} - {dev['name']}")
+                        return idx
+
+        # 2. 優先匹配常見的麥克風硬體關鍵字
         keywords = ["voicehat", "respeaker", "usb", "mic", "microphone", "proto"]
         for idx, dev in enumerate(devices):
             if dev.get('max_input_channels', 0) > 0:
@@ -46,7 +83,7 @@ def find_best_input_device():
                     print(f"[Audio] 🔍 動態匹配到優選麥克風: ID {idx} - {dev['name']}")
                     return idx
                     
-        # 2. 嘗試獲取系統預設輸入設備
+        # 3. 嘗試獲取系統預設輸入設備
         try:
             default_device = sd.query_devices(kind='input')
             if default_device:
@@ -57,7 +94,7 @@ def find_best_input_device():
         except Exception:
             pass
 
-        # 3. 尋找第一個支援輸入的設備
+        # 4. 尋找第一個支援輸入的設備
         for idx, dev in enumerate(devices):
             if dev.get('max_input_channels', 0) > 0:
                 print(f"[Audio] 🔍 使用第一個支援的輸入設備: ID {idx} - {dev['name']}")

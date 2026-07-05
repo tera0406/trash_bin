@@ -116,37 +116,34 @@ PC_SERVER_IP = "100.x.x.x"
 PC_SERVER_PORT = 5000
 ```
 
-### 3. 執行主程式
+### 3. 執行主程式 (FSM 複合觸發控制器)
 ```bash
-python pi_remote_controller.py
+python composite_trigger_controller.py
 ```
-或
+或使用互動式測試 CLI 工具：
 ```bash
-python3 pi_remote_controller.py
+python interactive_controller.py
 ```
+
+### 4. 啟動 Streamlit 實時監測與標記工具看板
+看板提供 Live Dashboard (監測狀態與歷史日誌)、麥克風診斷、數據集標記與 ZIP 導出、網路/Tailscale 配置以及舵機與重量硬體校準五大模組。
+```bash
+# 執行 Streamlit 服務
+streamlit run Streamlit.py
+```
+啟動後，瀏覽器將自動開啟：`http://localhost:8501`。
 
 ## 硬體連接檢查
 
 1. **相機**: 確保 USB 相機已連接，可使用 `ls /dev/video*` 檢查。
 2. **ESP32**: 確保 USB TTL 線已連接，可使用 `ls /dev/ttyUSB*` 檢查 (通常是 `/dev/ttyUSB0`)。
-3. **麥克風 (I2S 數位麥克風)**: 
-   若使用 I2S 數位麥克風（例如 INMP441 / SPH0645），請連接至樹莓派的 PCM 介面：
+3. **麥克風 (USB 麥克風 - audio-technica ATR4650-USB)**:
+   此麥克風為 USB 隨插即用裝置，免除了原有的 I2S GPIO 接線（原 Pin 12, 35, 38 等）。
+   *   **硬體連接**: 直接插入樹莓派任一 USB 埠。
+   *   **系統識別**: 在終端機執行 `lsusb` 確認系統有偵測到音效裝置。
+   *   **列出錄音卡號**: 執行 `arecord -l` 取得 USB 麥克風的 Card ID 或裝置名稱。
+   *   **設定優先目標**: 預設系統會自動尋找含 `usb`、`mic` 關鍵字的音效卡。若有多張音訊裝置，可在 `.env` 中設定 `AUDIO_DEVICE_TARGET=ATR4650` 進行明確鎖定。
 
-   | 麥克風腳位 | 樹莓派 GPIO 腳位 | 實體引腳編號 (Physical Pin) |
-   | :--- | :--- | :--- |
-   | **VDD / 3.3V** | 3.3V Power | Pin 1 或 Pin 17 |
-   | **GND** | Ground | Pin 6, 9, 14, 20, 25, 30, 34, 39 |
-   | **BCLK / SCK** | GPIO 18 (PCM_CLK) | Pin 12 |
-   | **LRCK / WS** | GPIO 19 (PCM_FS) | Pin 35 |
-   | **SD / DOUT** | GPIO 20 (PCM_DIN) | Pin 38 |
-   | **L/R** | 接 GND (左聲道) 或 3.3V (右聲道) | - |
-
-   *設定與啟用*:
-   在樹莓派的 `/boot/firmware/config.txt` (或舊版 `/boot/config.txt`) 中加入以下設定以啟用 I2S：
-   ```text
-   dtparam=i2s=on
-   ```
-   儲存後並重新啟動樹莓派。
 
 4. **I2C 設備 (若適用)**:
    若使用 I2C 的感測器或 ADC 模組，請連接至樹莓派硬體 I2C1 介面：
