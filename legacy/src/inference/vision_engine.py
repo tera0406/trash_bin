@@ -1,13 +1,13 @@
-"""
-Vision Engine - EfficientNet 影像辨識引擎
-對應計畫書: [cite: 199, 202, 221]
+﻿"""
+Vision Engine - EfficientNet 敶勗?颲刻?撘?
+撠?閮??
 
-職責:
-- 接收影像資料 (base64 或檔案路徑)
-- 使用 EfficientNet 模型進行分類推論
-- 回傳分類結果與信心值 (Confidence Score) [cite: 127, 200]
+?瑁痊:
+- ?交敶勗?鞈? (base64 ??獢楝敺?
+- 雿輻 EfficientNet 璅∪??脰????刻?
+- ???蝯??縑敹?(Confidence Score)
 
-硬體限制: 僅在 PC 層執行，Pi 層禁止執行 AI 推論
+蝖祇??: ? PC 撅文銵?Pi 撅斤?甇Ｗ銵?AI ?刻?
 """
 
 import numpy as np
@@ -18,13 +18,13 @@ import io
 import base64
 from typing import Dict, Tuple, Optional
 
-# 垃圾分類類別定義 (訓練時的正確順序，共 10 類)
+# ???憿摰儔 (閮毀??甇?Ⅱ??嚗 10 憿?
 CLASS_CATEGORIES = [
     "battery", "biological", "cardboard", "clothes", "glass", 
     "metal", "paper", "plastic", "shoes", "trash"
 ]
 
-# 類別映射表: 將 10 個細項類別 映射回 4 大類 (Pi 只認這 4 類)
+# 憿??銵? 撠?10 ?敦????????4 憭折? (Pi ?芾???4 憿?
 CATEGORY_MAPPING = {
     "battery": "Metal",
     "biological": "General",
@@ -40,156 +40,156 @@ CATEGORY_MAPPING = {
 
 class VisionEngine:
     """
-    EfficientNet 影像辨識引擎
+    EfficientNet 敶勗?颲刻?撘?
     
-    使用 EfficientNet-B0 作為基礎架構
-    輸入: 224x224 RGB 影像
-    輸出: 類別名稱與信心值 (映射後)
+    雿輻 EfficientNet-B0 雿?箇??嗆?
+    頛詨: 224x224 RGB 敶勗?
+    頛詨: 憿?迂?縑敹?(??敺?
     """
     
     def __init__(self, model_path: Optional[str] = None, img_size: int = 224):
         """
-        初始化視覺引擎
+        ????閬箏???
         
         Args:
-            model_path: 預訓練模型路徑 (若為 None 則使用預設架構)
-            img_size: 輸入影像尺寸 (EfficientNet 標準為 224x224)
+            model_path: ??蝺湔芋?楝敺?(?亦 None ?蝙?券?閮剜瑽?
+            img_size: 頛詨敶勗?撠箏站 (EfficientNet 璅???224x224)
         """
         self.img_size = img_size
         self.model = None
         self.model_path = model_path
         
-        # 載入或建立模型
+        # 頛?遣蝡芋??
         self._load_model()
     
     def _load_model(self):
         """
-        載入 EfficientNet 模型
+        頛 EfficientNet 璅∪?
         
-        若 model_path 為 None，則建立一個新的模型架構 (用於開發測試)
-        實際部署時應載入已訓練的模型權重
+        ??model_path ??None嚗?撱箇?銝??芋?瑽?(?冽?皜祈岫)
+        撖阡??函蔡??頛撌脰?蝺渡?璅∪?甈?
         """
         if self.model_path:
             try:
-                # 載入已訓練的模型 [cite: 199]
+                # 頛撌脰?蝺渡?璅∪?
                 self.model = keras.models.load_model(self.model_path)
-                print(f"[Vision] 已載入模型: {self.model_path}")
+                print(f"[Vision] 撌脰??交芋?? {self.model_path}")
             except Exception as e:
-                print(f"[Vision] 警告: 無法載入模型 {self.model_path}: {e}")
-                print("[Vision] 使用預設架構...")
+                print(f"[Vision] 霅血?: ?⊥?頛璅∪? {self.model_path}: {e}")
+                print("[Vision] 雿輻?身?嗆?...")
                 self._create_default_model()
         else:
-            # 建立預設模型架構 (用於開發階段)
+            # 撱箇??身璅∪??嗆? (?冽??挾)
             self._create_default_model()
     
     def _create_default_model(self):
         """
-        建立預設的 EfficientNet-B0 模型架構
+        撱箇??身??EfficientNet-B0 璅∪??嗆?
         
-        注意: 此模型未經訓練，僅用於架構測試
-        實際使用時必須載入已訓練的權重
+        瘜冽?: 甇斗芋?蝬?蝺湛???潭瑽葫閰?
+        撖阡?雿輻?????亙歇閮毀????
         """
-        # 使用 EfficientNet-B0 作為特徵提取器 [cite: 199]
+        # 雿輻 EfficientNet-B0 雿?孵噩????
         base_model = keras.applications.EfficientNetB0(
-            weights='imagenet',  # 使用 ImageNet 預訓練權重
-            include_top=False,   # 不包含頂層分類器
+            weights='imagenet',  # 雿輻 ImageNet ??蝺湔???
+            include_top=False,   # 銝??恍?撅文?憿
             input_shape=(self.img_size, self.img_size, 3)
         )
         
-        # 凍結基礎模型 (可選，微調時可解凍)
+        # ???箇?璅∪? (?舫嚗凝隤踵??航圾??
         base_model.trainable = False
         
-        # 建立完整模型
+        # 撱箇?摰璅∪?
         inputs = keras.Input(shape=(self.img_size, self.img_size, 3))
         x = base_model(inputs, training=False)
         x = keras.layers.GlobalAveragePooling2D()(x)
         x = keras.layers.Dropout(0.2)(x)
-        # 輸出層: 對應我們的類別數量
+        # 頛詨撅? 撠???憿?賊?
         outputs = keras.layers.Dense(len(CLASS_CATEGORIES), activation='softmax')(x)
         
         self.model = keras.Model(inputs, outputs)
-        print("[Vision] 已建立預設 EfficientNet-B0 架構 (未訓練)")
+        print("[Vision] 撌脣遣蝡?閮?EfficientNet-B0 ?嗆? (?芾?蝺?")
     
     def preprocess_image(self, image_input) -> np.ndarray:
         """
-        影像預處理
+        敶勗?????
         
-        將輸入影像轉換為模型所需的格式:
-        - 調整尺寸至 224x224
-        - 正規化像素值至 [0, 1]
-        - 轉換為 RGB 格式
+        撠撓?亙蔣???璅∪????撘?
+        - 隤踵撠箏站??224x224
+        - 甇????蝝潸 [0, 1]
+        - 頧???RGB ?澆?
         
         Args:
-            image_input: 可以是以下格式:
-                - PIL Image 物件
+            image_input: ?臭誑?臭誑銝撘?
+                - PIL Image ?拐辣
                 - numpy array
-                - base64 字串
-                - 檔案路徑字串
+                - base64 摮葡
+                - 瑼?頝臬?摮葡
         
         Returns:
-            預處理後的影像陣列 (224, 224, 3)
+            ?????蔣???(224, 224, 3)
         """
-        # 處理不同輸入格式
+        # ??銝?頛詨?澆?
         if isinstance(image_input, str):
-            # 判斷是 base64 還是檔案路徑
+            # ?斗??base64 ?瑼?頝臬?
             if image_input.startswith('data:image') or len(image_input) > 100:
-                # Base64 編碼
+                # Base64 蝺函Ⅳ
                 try:
-                    # 移除 data:image/xxx;base64, 前綴
+                    # 蝘駁 data:image/xxx;base64, ?韌
                     if ',' in image_input:
                         image_input = image_input.split(',')[1]
                     image_data = base64.b64decode(image_input)
                     img = Image.open(io.BytesIO(image_data))
                 except Exception as e:
-                    raise ValueError(f"無法解碼 base64 影像: {e}")
+                    raise ValueError(f"?⊥?閫?Ⅳ base64 敶勗?: {e}")
             else:
-                # 檔案路徑
+                # 瑼?頝臬?
                 img = Image.open(image_input)
         elif isinstance(image_input, np.ndarray):
             img = Image.fromarray(image_input)
         elif isinstance(image_input, Image.Image):
             img = image_input
         else:
-            raise ValueError(f"不支援的影像格式: {type(image_input)}")
+            raise ValueError(f"銝?渡?敶勗??澆?: {type(image_input)}")
         
-        # 確保為 RGB 格式
+        # 蝣箔???RGB ?澆?
         if img.mode != 'RGB':
             img = img.convert('RGB')
         
-        # 調整尺寸
+        # 隤踵撠箏站
         img = img.resize((self.img_size, self.img_size))
         
-        # 轉換為 numpy array 並正規化
+        # 頧???numpy array 銝行迤閬?
         img_array = np.array(img, dtype=np.float32) / 255.0
         
-        # 擴展維度以符合模型輸入 (batch_size, height, width, channels)
+        # ?游?蝬剖漲隞亦泵?芋?撓??(batch_size, height, width, channels)
         img_array = np.expand_dims(img_array, axis=0)
         
         return img_array
     
     def predict(self, image_input) -> Dict[str, any]:
         """
-        執行影像分類推論
+        ?瑁?敶勗????刻?
         
         Args:
-            image_input: 影像輸入 (支援多種格式，見 preprocess_image)
+            image_input: 敶勗?頛詨 (?舀憭車?澆?嚗? preprocess_image)
         
         Returns:
             {
-                "class": "Paper",             # 映射後的預測類別
-                "confidence": 0.95,           # 信心值
-                "all_probs": {...},           # 所有類別的機率分佈 (原始類別)
-                "status": "success"           # 狀態碼
+                "class": "Paper",             # ??敺??葫憿
+                "confidence": 0.95,           # 靽∪???
+                "all_probs": {...},           # ????亦?璈??? (??憿)
+                "status": "success"           # ??Ⅳ
             }
         """
         try:
-            # 1. 預處理影像
+            # 1. ???蔣??
             processed_img = self.preprocess_image(image_input)
             
-            # 2. 模型推論
+            # 2. 璅∪??刻?
             predictions = self.model.predict(processed_img, verbose=0)
             
-            # [Debug] 印出 Top 3 預測索引
+            # [Debug] ?啣 Top 3 ?葫蝝Ｗ?
             top_3_indices = np.argsort(predictions[0])[-3:][::-1]
             print(f"[Vision Debug] Top 3 Predictions:")
             for idx in top_3_indices:
@@ -197,36 +197,36 @@ class VisionEngine:
                 c_name = CLASS_CATEGORIES[idx] if idx < len(CLASS_CATEGORIES) else "Unknown"
                 print(f"  - {c_name} (Index {idx}): {p_val:.4f}")
 
-            # 3. 取得最高機率的類別與信心值
+            # 3. ???擃???憿?縑敹?
             class_idx = np.argmax(predictions[0])
             confidence = float(predictions[0][class_idx])
             
-            # [Logic] 類別對應與映射
+            # [Logic] 憿撠???撠?
             if class_idx < len(CLASS_CATEGORIES):
                 raw_class = CLASS_CATEGORIES[class_idx]
-                # [Map] 將細項類別轉換為 4 大類
+                # [Map] 撠敦???亥?? 4 憭折?
                 predicted_class = CATEGORY_MAPPING.get(raw_class, "General")
-                print(f"[VisionResult] 原始: {raw_class} ({confidence:.3f}) -> 映射: {predicted_class}")
+                print(f"[VisionResult] ??: {raw_class} ({confidence:.3f}) -> ??: {predicted_class}")
             else:
-                print(f"[Vision] 警告: 預測索引 {class_idx} 超出範圍")
+                print(f"[Vision] 霅血?: ?葫蝝Ｗ? {class_idx} 頞蝭?")
                 predicted_class = "unknown"
                 confidence = 0.0
 
-            # 4. 建立所有類別的機率分佈字典 (原始類別)
+            # 4. 撱箇?????亦?璈???摮 (??憿)
             all_probs = {}
             for i in range(min(len(CLASS_CATEGORIES), len(predictions[0]))):
                 all_probs[CLASS_CATEGORIES[i]] = float(predictions[0][i])
             
             return {
-                "class": predicted_class, # 回傳轉換後的 4 大類
+                "class": predicted_class, # ?頧?敺? 4 憭折?
                 "confidence": confidence,
                 "all_probs": all_probs,
                 "status": "success"
             }
             
         except Exception as e:
-            # 錯誤處理: 回傳錯誤狀態 [cite: 47, 91]
-            print(f"[Vision] 推論錯誤: {e}")
+            # ?航炊??: ??航炊???
+            print(f"[Vision] ?刻??航炊: {e}")
             return {
                 "class": "unknown",
                 "confidence": 0.0,
@@ -236,7 +236,7 @@ class VisionEngine:
     
     def get_model_info(self) -> Dict[str, any]:
         """
-        取得模型資訊 (用於除錯與監控)
+        ??璅∪?鞈? (?冽?日???
         """
         if self.model is None:
             return {"status": "model_not_loaded"}
@@ -250,16 +250,17 @@ class VisionEngine:
         }
 
 
-# 全域實例 (單例模式，避免重複載入模型)
+# ?典?撖虫? (?桐?璅∪?嚗??銴??交芋??
 _vision_engine_instance = None
 
 def get_vision_engine(model_path: Optional[str] = None) -> VisionEngine:
     """
-    取得 VisionEngine 單例實例
+    ?? VisionEngine ?桐?撖虫?
     
-    避免重複載入模型，節省記憶體與載入時間
+    ?踹???頛璅∪?嚗????園????交???
     """
     global _vision_engine_instance
     if _vision_engine_instance is None:
         _vision_engine_instance = VisionEngine(model_path=model_path)
     return _vision_engine_instance
+

@@ -15,32 +15,99 @@ import base64
 import json
 import sys
 import os
+import io
 import cv2
 import numpy as np
 
-# 匯入同級模組
 try:
-    from esp32_uart import ESP32UART
+    from src.hardware.esp32_uart import ESP32UART
+    from src.hardware.audio_processor import record_and_process_audio, audio_to_mel_spectrogram_image
 except ImportError:
     # 若直接執行此腳本，可能需要調整路徑
     sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-    from esp32_uart import ESP32UART
+    try:
+        from src.hardware.esp32_uart import ESP32UART
+        from src.hardware.audio_processor import record_and_process_audio, audio_to_mel_spectrogram_image
+    except ImportError as e:
+        print(f"[Error] 無法匯入必要模組 (ESP32UART 或 audio_processor)，錯誤: {e}")
+        sys.exit(1)
+
+import os
+from env_loader import load_env
+
+# 載入環境變數設定
+load_env()
+
+# 匯入系統相機防過曝與延遲設定
+try:
+    from config import (
+        PHOTO_DELAY_SEC,
+        CAMERA_EXPOSURE_VALUE,
+        CAMERA_METERING_MODE,
+        CAMERA_CONTRAST,
+        CAMERA_BRIGHTNESS,
+        PITCH_NEUTRAL
+    )
 except ImportError:
-    print("[Error] 無法匯入 ESP32UART，請確認路徑或檔案是否存在。")
-    sys.exit(1)
+    PHOTO_DELAY_SEC = 0.5
+    CAMERA_EXPOSURE_VALUE = -1.0
+    CAMERA_METERING_MODE = "spot"
+    CAMERA_CONTRAST = 1.0
+    CAMERA_BRIGHTNESS = 0.0
+    PITCH_NEUTRAL = 98
 
 # ===== 配置參數 =====
-PC_SERVER_URL = "http://100.85.67.115:5000/predict"
-ESP32_PORT = "/dev/ttyUSB0"
+PC_SERVER_IP = os.getenv("PC_SERVER_IP", "192.168.31.18")
+PC_SERVER_PORT = os.getenv("PC_SERVER_PORT", "5000")
+PC_SERVER_URL = f"http://{PC_SERVER_IP}:{PC_SERVER_PORT}/predict"
+ESP32_PORT = os.getenv("SERIAL_PORT", "/dev/ttyUSB0")
 TIMEOUT_SECONDS = 10
 
-# 類別對應 (簡化版)
+# 類別對應 (Yaw 軸為 270° Servo: write(60) = 物理 90°)
 CLASS_MAPPING = {
-    "Paper":   {"pitch": 45, "yaw": 0},
-    "Plastic": {"pitch": -45, "yaw": 0},
-    "General": {"pitch": 0, "yaw": -45},
-    "Metal":   {"pitch": 0, "yaw": 45}
+    "paper":   {"pitch": 45, "yaw": 0},
+    "plastic": {"pitch": 135, "yaw": 0},
+    "general": {"pitch": 45, "yaw": 60},
+    "metal":   {"pitch": 135, "yaw": 60}
 }
+
+def apply_camera_settings(picam2):
+    """根據系統設定，套用 Picamera2 相機參數 (如曝光補償、測光模式等) 以防止過曝"""
+    try:
+        from libcamera import controls
+        control_dict = {}
+        
+        # 1. 曝光補償 (Exposure Value)
+        control_dict["ExposureValue"] = CAMERA_EXPOSURE_VALUE
+        
+        # 2. 測光模式 (Metering Mode)
+        mode = CAMERA_METERING_MODE.lower().strip()
+        if mode == "spot":
+            control_dict["AeMeteringMode"] = controls.AeMeteringModeEnum.MeteringSpot
+        elif mode in ("centre-weighted", "center-weighted"):
+            control_dict["AeMeteringMode"] = controls.AeMeteringModeEnum.MeteringCentreWeighted
+        elif mode == "matrix":
+            control_dict["AeMeteringMode"] = controls.AeMeteringModeEnum.MeteringMatrix
+            
+        # 3. 對比度
+        control_dict["Contrast"] = CAMERA_CONTRAST
+        
+        # 4. 亮度
+        control_dict["Brightness"] = CAMERA_BRIGHTNESS
+        
+        # 5. 自動對焦 (AfMode) - 專為 Pi Camera 3 設計之馬達驅動鏡頭
+        try:
+            control_dict["AfMode"] = controls.AfModeEnum.Continuous
+        except AttributeError:
+            pass
+        
+        print(f"[Camera] 正在套用相機防過曝與自動對焦參數: {control_dict}")
+        picam2.set_controls(control_dict)
+    except ImportError:
+        print("[Camera] [Warning] 無法載入 libcamera.controls，跳過測光與曝光參數設定 (僅在 Raspberry Pi 環境支援)")
+    except Exception as e:
+        print(f"[Camera] [Warning] 套用相機參數失敗: {e}")
+
 
 def main():
     camera_lib = None
@@ -49,13 +116,15 @@ def main():
     try:
         # 1. 初始化相機 (Picamera2)
         print("[Init] 正在初始化相機 (Picamera2)...")
+        # pyrefly: ignore [missing-import]
         from picamera2 import Picamera2
         picam2 = Picamera2()
         # 設定預覽串流格式 (640x480, RGB)
-        config = picam2.create_preview_configuration(main={"format": "XBGR8888", "size": (640, 480)})
+        config = picam2.create_preview_configuration(main={"format": "RGB888", "size": (640, 480)})
         picam2.configure(config)
+        apply_camera_settings(picam2)
         picam2.start()
-        print("[Init] 相機啟動成功")
+        print("[Init] 相機啟動成功與防過曝參數設定")
         camera_lib = picam2
         
         # 2. 初始化 ESP32 UART
@@ -81,29 +150,44 @@ def main():
             if user_input == 'q':
                 break
             
-            # 取得即時影像
-            # 雖然不顯示預覽，但仍需擷取當下畫面
-            frame = picam2.capture_array()
+            print("[Trigger] 觸發！正在進行影像與音訊採集...")
             
-            print("[Trigger] 觸發！正在處理...")
+            # 1. 音訊錄製與 Mel-spectrogram 頻譜生成
+            # 此錄音過程包含混音單聲道與音量自動補償 (與 collect_audio 方法一致)
+            audio_data = record_and_process_audio()
+            spec_bytes = audio_to_mel_spectrogram_image(audio_data)
             
-            # 準備影像資料
-            # 將 numpy array 編碼為 jpg bytes
-            _, img_encoded = cv2.imencode('.jpg', frame)
-            image_b64 = base64.b64encode(img_encoded.tobytes()).decode('utf-8')
+            # 2. 取得即時影像與編碼
+            # 使用 capture_file(format='jpeg') 讓 Picamera2 ISP 直接輸出 JPEG
+            # 顏色由硬體處理，不經 Python 通道轉換，與 web_stream.py 做法相同
+            if PHOTO_DELAY_SEC > 0:
+                print(f"[Capture] ⏳ 拍照前延遲 {PHOTO_DELAY_SEC:.2f} 秒，確保物體完全靜止...")
+                time.sleep(PHOTO_DELAY_SEC)
+                
+            buf = io.BytesIO()
+            picam2.capture_file(buf, format="jpeg")
+            img_bytes = buf.getvalue()
             
-            # 發送 HTTP 請求
-            payload = {"image": image_b64, "audio": None, "timestamp": time.time()}
-            print(f"[Network] 上傳至 PC ({PC_SERVER_URL})...")
+            # 3. 發送 HTTP 請求 (multipart/form-data)
+            files = {
+                "image": ("capture.jpg", img_bytes, "image/jpeg")
+            }
+            if spec_bytes:
+                files["audio_spec"] = ("spectrogram.jpg", spec_bytes, "image/jpeg")
+                print("[Audio] 已附帶 Mel-spectrogram 音訊頻譜圖")
+            else:
+                print("[Audio] [Warning] 未能成功附帶音訊頻譜圖")
+                
+            print(f"[Network] 上傳資料至 PC 推論伺服器 ({PC_SERVER_URL})...")
             
             try:
                 start_time = time.time()
-                resp = requests.post(PC_SERVER_URL, json=payload, timeout=TIMEOUT_SECONDS)
+                resp = requests.post(PC_SERVER_URL, files=files, timeout=TIMEOUT_SECONDS)
                 latency = (time.time() - start_time) * 1000
                 
                 if resp.status_code == 200:
                     res = resp.json()
-                    cls = res.get("class", "unknown")
+                    cls = res.get("label", "unknown")
                     conf = res.get("confidence", 0.0)
                     is_gemini = res.get("is_gemini", False)
                     reason = res.get("reasoning", "")
@@ -116,21 +200,36 @@ def main():
                     # ESP32 致動
                     if uart and cls in CLASS_MAPPING:
                         action = CLASS_MAPPING[cls]
-                        print(f"[Action] 傳送指令 -> Pitch:{action['pitch']}, Yaw:{action['yaw']}")
-                        uart.send_move_command(action['pitch'], action['yaw'])
+                        adjusted_pitch = PITCH_NEUTRAL + (action['pitch'] - 90)
+                        print(f"[Action] 傳送指令 -> Pitch:{adjusted_pitch} (原本:{action['pitch']}), Yaw:{action['yaw']}")
+                        success, err = uart.send_move_command(adjusted_pitch, action['yaw'])
+                        if success:
+                            print("[ESP32] 收到指令並確認 (ACK)")
+                            print("[Action] 正在執行平滑移動，等待 DONE 訊號...")
+                            resp = uart.read_response(timeout=6.0)
+                            if resp and "DONE" in resp:
+                                print("[ESP32] 移動到位 (DONE)")
+                            else:
+                                print(f"[Warning] 未能確認動作完成 (回應: {resp})")
+                        else:
+                            print(f"[Error] 致動指令發送失敗: {err}")
                         
-                        # 簡單等待回應 (非阻塞)
-                        time.sleep(0.1)
-                        response = uart.read_response()
-                        if response:
-                            print(f"[ESP32] 回應: {response}")
-                        
-                        # 模擬動作時間後歸位
-                        time.sleep(2)
-                        print("[Action] 歸位")
-                        uart.send_reset_command()
+                        # 停留 1.5 秒讓垃圾滑落，然後歸位
+                        time.sleep(1.5)
+                        print("[Action] 傳送歸位指令...")
+                        success, err = uart.send_reset_command()
+                        if success:
+                            print("[ESP32] 收到歸位指令並確認 (ACK)")
+                            print("[Action] 正在執行歸位，等待 DONE 訊號...")
+                            resp = uart.read_response(timeout=6.0)
+                            if resp and "DONE" in resp:
+                                print("[ESP32] 歸位完成 (DONE)")
+                            else:
+                                print(f"[Warning] 未能確認歸位完成 (回應: {resp})")
+                        else:
+                            print(f"[Error] 歸位指令發送失敗: {err}")
                     elif uart:
-                            print(f"[Action] 未知類別 '{cls}'，不進行動作")
+                        print(f"[Action] 未知類別 '{cls}'，不進行動作")
                             
                 else:
                     print(f"[Error] 伺服器錯誤: {resp.status_code} - {resp.text}")

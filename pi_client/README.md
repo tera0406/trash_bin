@@ -57,12 +57,20 @@
 ## 專案結構
 
 ```
-pi_controller/
-├── interactive_controller.py # 互動式測試與控制器 (建議)
-├── pi_remote_controller.py   # 舊版控制器腳本 (Client Mode)
-├── pc_client.py              # 與 PC 通訊模組
-├── esp32_uart.py             # 與 ESP32 通訊模組
-└── README.md                 # 本檔案
+pi_client/
+├── composite_trigger_controller.py # 核心：生產級 FSM 複合觸發控制器 MVP (重量 + 影像幀差雙重去抖動)
+├── interactive_controller.py       # 核心：互動式測試控制 CLI 工具 (Space/Enter 觸發)
+├── pc_client.py                    # 核心：與 PC Inference Server 的 HTTP 通訊模組
+├── esp32_uart.py                   # 核心：與 ESP32 的 UART Serial 雙向通訊模組
+├── audio_processor.py              # 核心：聽覺採集與 Mel-spectrogram 頻譜純 Numpy/OpenCV 生成
+├── env_loader.py                   # 核心：無縫載入 .env 檔案為環境變數之輔助模組
+├── README.md                       # 本說明文件
+├── tests/                          # 測試與校準工具目錄
+│   ├── __init__.py
+│   └── test_weight_sensor.py       # HX711 重量感測器 UART 校準與穩定性測試工具
+└── legacy/                         # 歷史與封存舊版腳本目錄
+    ├── impact_trigger_test.py      # 衝擊聲觸發獨立測試腳本
+    └── pi_remote_controller.py     # 舊版 CV2 預覽控制腳本 (Client Mode)
 ```
 
 ## 安裝指南 (Raspberry Pi)
@@ -121,6 +129,30 @@ python3 pi_remote_controller.py
 
 1. **相機**: 確保 USB 相機已連接，可使用 `ls /dev/video*` 檢查。
 2. **ESP32**: 確保 USB TTL 線已連接，可使用 `ls /dev/ttyUSB*` 檢查 (通常是 `/dev/ttyUSB0`)。
+3. **麥克風 (I2S 數位麥克風)**: 
+   若使用 I2S 數位麥克風（例如 INMP441 / SPH0645），請連接至樹莓派的 PCM 介面：
+
+   | 麥克風腳位 | 樹莓派 GPIO 腳位 | 實體引腳編號 (Physical Pin) |
+   | :--- | :--- | :--- |
+   | **VDD / 3.3V** | 3.3V Power | Pin 1 或 Pin 17 |
+   | **GND** | Ground | Pin 6, 9, 14, 20, 25, 30, 34, 39 |
+   | **BCLK / SCK** | GPIO 18 (PCM_CLK) | Pin 12 |
+   | **LRCK / WS** | GPIO 19 (PCM_FS) | Pin 35 |
+   | **SD / DOUT** | GPIO 20 (PCM_DIN) | Pin 38 |
+   | **L/R** | 接 GND (左聲道) 或 3.3V (右聲道) | - |
+
+   *設定與啟用*:
+   在樹莓派的 `/boot/firmware/config.txt` (或舊版 `/boot/config.txt`) 中加入以下設定以啟用 I2S：
+   ```text
+   dtparam=i2s=on
+   ```
+   儲存後並重新啟動樹莓派。
+
+4. **I2C 設備 (若適用)**:
+   若使用 I2C 的感測器或 ADC 模組，請連接至樹莓派硬體 I2C1 介面：
+   - **SDA** -> GPIO 2 (Pin 3)
+   - **SCL** -> GPIO 3 (Pin 5)
+   - 可在 `sudo raspi-config` 中開啟 I2C 功能，並使用 `i2cdetect -y 1` 檢查設備。
 
 ## 注意事項
 

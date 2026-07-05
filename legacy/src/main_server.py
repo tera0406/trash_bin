@@ -1,14 +1,13 @@
-"""
-Main Server - PC 層推論伺服器
-對應計畫書: [cite: 187, 197, 199]
+﻿"""
+Main Server - PC 撅斗隢撩?
+撠?閮??
 
-職責:
-- 接收來自 Raspberry Pi 的多模態資料 (影像 + 音訊)
-- 執行 EfficientNet 影像辨識與音訊頻譜分析
-- 進行多模態融合與 Gemini 備援判斷
-- 透過 HTTP/JSON 回傳分類結果給 Pi
+?瑁痊:
+- ?交靘 Raspberry Pi ??璅⊥?鞈? (敶勗? + ?唾?)
+- ?瑁? EfficientNet 敶勗?颲刻??閮霅???- ?脰?憭芋???? Gemini ??斗
+- ?? HTTP/JSON ???蝯?蝯?Pi
 
-硬體限制: 僅在 PC 層執行，Pi 層禁止執行 AI 推論
+蝖祇??: ? PC 撅文銵?Pi 撅斤?甇Ｗ銵?AI ?刻?
 """
 
 import os
@@ -21,64 +20,63 @@ from PIL import Image
 import numpy as np
 from dotenv import load_dotenv
 
-# 載入 .env 檔案中的環境變數
-# 對應計畫書: 實驗參數配置 [cite: 178, 204, 246, 251]
+# 頛 .env 瑼?銝剔??啣?霈
+# 撠?閮?? 撖阡???蔭
 load_dotenv()
 
-# 匯入推論引擎模組
+# ?臬?刻?撘?璅∠?
 from src.inference.vision_engine import get_vision_engine
 from src.inference.audio_engine import get_audio_engine
 from src.inference.fusion_logic import get_fusion_logic
 from src.inference.gemini_fallback import get_gemini_fallback
 
 app = Flask(__name__)
-CORS(app)  # 允許跨域請求 (Pi 可能在不同 IP)
+CORS(app)  # ?迂頝典?隢? (Pi ?航?其???IP)
 
-# ==================== 實驗參數配置 (可調整) ====================
-# 對應計畫書中的關鍵變因 [cite: 178, 204, 246, 251]
+# ==================== 撖阡???蔭 (?航矽?? ====================
+# 撠?閮?訾葉???菔???
 
-# 1. 多模態融合權重 [cite: 178, 246]
+# 1. 憭芋??????
 VISION_WEIGHT = float(os.getenv("VISION_WEIGHT", "0.6"))
 AUDIO_WEIGHT = float(os.getenv("AUDIO_WEIGHT", "0.4"))
 
-# 2. 動態信心度閾值 (Confidence Threshold T) [cite: 204, 251]
+# 2. ??靽∪?摨阡??(Confidence Threshold T)
 CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", "0.85"))
 
-# 3. 模型路徑 (可選，若為 None 則使用預設架構)
+# 3. 璅∪?頝臬? (?舫嚗??None ?蝙?券?閮剜瑽?
 VISION_MODEL_PATH = os.getenv("VISION_MODEL_PATH", None)
 AUDIO_MODEL_PATH = os.getenv("AUDIO_MODEL_PATH", None)
 
-# ==================== 初始化推論引擎 ====================
+# ==================== ???隢???====================
 
-print("[Server] 正在初始化推論引擎...")
+print("[Server] 甇????隢???..")
 
-# 初始化各引擎 (單例模式，避免重複載入)
+# ????撘? (?桐?璅∪?嚗??銴???
 vision_engine = get_vision_engine(model_path=VISION_MODEL_PATH)
 audio_engine = get_audio_engine(model_path=AUDIO_MODEL_PATH)
 fusion_logic = get_fusion_logic(vision_weight=VISION_WEIGHT, audio_weight=AUDIO_WEIGHT)
 gemini_fallback = get_gemini_fallback(confidence_threshold=CONFIDENCE_THRESHOLD)
 
-print("[Server] 推論引擎初始化完成")
+print("[Server] ?刻?撘???????)
 
-# ==================== API 端點 ====================
+# ==================== API 蝡舫? ====================
 
 @app.route('/predict', methods=['POST'])
 def predict():
     """
-    接收來自 Raspberry Pi 的多模態資料並回傳分類結果
+    ?交靘 Raspberry Pi ??璅⊥?鞈?銝血??喳?憿???    
+    撠?閮?訾葉?敹?蝞惜 (Server Layer)
+    ???降: JSON
     
-    對應計畫書中的核心運算層 (Server Layer) [cite: 187]
-    通訊協議: JSON [cite: 197]
-    
-    請求格式:
+    隢??澆?:
     {
         "event_id": "event_001",
-        "image": "base64_encoded_image_string" 或 "image_path",
-        "audio": "base64_encoded_audio_bytes" 或 "audio_path",
+        "image": "base64_encoded_image_string" ??"image_path",
+        "audio": "base64_encoded_audio_bytes" ??"audio_path",
         "timestamp": 1234567890.0
     }
     
-    回應格式:
+    ???澆?:
     {
         "event_id": "event_001",
         "class": "Class A",
@@ -94,11 +92,11 @@ def predict():
     }
     """
     try:
-        # 1. 取得請求資料
+        # 1. ??隢?鞈?
         data = request.json
         if not data:
             return jsonify({
-                "error": "無請求資料",
+                "error": "?∟?瘙???,
                 "status": "error"
             }), 400
         
@@ -107,25 +105,25 @@ def predict():
         audio_data = data.get("audio")
         request_timestamp = data.get("timestamp", time.time())
         
-        print(f"[Server] 收到事件 {event_id} 的推論請求...")
+        print(f"[Server] ?嗅鈭辣 {event_id} ?隢?瘙?..")
         
-        # 2. 驗證輸入資料
+        # 2. 撽?頛詨鞈?
         if not image_data and not audio_data:
             return jsonify({
                 "event_id": event_id,
-                "error": "缺少影像或音訊資料",
+                "error": "蝻箏?敶勗??閮???,
                 "status": "error"
             }), 400
         
-        # 3. 執行影像推論 (如果有影像資料)
+        # 3. ?瑁?敶勗??刻? (憒??蔣????
         vision_result = None
         if image_data:
             try:
-                print(f"[Server] 執行影像推論...")
+                print(f"[Server] ?瑁?敶勗??刻?...")
                 vision_result = vision_engine.predict(image_data)
-                print(f"[Server] 影像推論完成: {vision_result['class']} (信心值: {vision_result['confidence']:.2f})")
+                print(f"[Server] 敶勗??刻?摰?: {vision_result['class']} (靽∪??? {vision_result['confidence']:.2f})")
             except Exception as e:
-                print(f"[Server] 影像推論錯誤: {e}")
+                print(f"[Server] 敶勗??刻??航炊: {e}")
                 vision_result = {
                     "class": "unknown",
                     "confidence": 0.0,
@@ -140,15 +138,15 @@ def predict():
                 "status": "skipped: no_image"
             }
         
-        # 4. 執行音訊推論 (如果有音訊資料)
+        # 4. ?瑁??唾??刻? (憒??閮???
         audio_result = None
         if audio_data:
             try:
-                print(f"[Server] 執行音訊推論...")
+                print(f"[Server] ?瑁??唾??刻?...")
                 audio_result = audio_engine.predict(audio_data)
-                print(f"[Server] 音訊推論完成: {audio_result['class']} (信心值: {audio_result['confidence']:.2f})")
+                print(f"[Server] ?唾??刻?摰?: {audio_result['class']} (靽∪??? {audio_result['confidence']:.2f})")
             except Exception as e:
-                print(f"[Server] 音訊推論錯誤: {e}")
+                print(f"[Server] ?唾??刻??航炊: {e}")
                 audio_result = {
                     "class": "unknown",
                     "confidence": 0.0,
@@ -163,25 +161,25 @@ def predict():
                 "status": "skipped: no_audio"
             }
         
-        # 5. 多模態融合 [cite: 178, 246]
-        print(f"[Server] 執行多模態融合...")
+        # 5. 憭芋????
+        print(f"[Server] ?瑁?憭芋????..")
         fusion_result = fusion_logic.fuse_predictions(vision_result, audio_result)
-        print(f"[Server] 融合完成: {fusion_result['class']} (信心值: {fusion_result['confidence']:.2f})")
+        print(f"[Server] ??摰?: {fusion_result['class']} (靽∪??? {fusion_result['confidence']:.2f})")
         
-        # 6. 判斷是否需要 Gemini 備援 [cite: 51, 130, 209]
+        # 6. ?斗?臬?閬?Gemini ?
         final_class = fusion_result["class"]
         final_confidence = fusion_result["confidence"]
         use_gemini = False
         gemini_reasoning = ""
         
         if gemini_fallback.should_use_gemini(final_confidence):
-            print(f"[Server] 本地信心值 ({final_confidence:.2f}) 低於閾值，啟動 Gemini 備援...")
+            print(f"[Server] ?砍靽∪???({final_confidence:.2f}) 雿?曉潘??? Gemini ?...")
             use_gemini = True
             
-            # 準備影像輸入 (用於 Gemini)
+            # 皞?敶勗?頛詨 (?冽 Gemini)
             try:
                 if image_data:
-                    # 轉換為 PIL Image
+                    # 頧???PIL Image
                     if isinstance(image_data, str):
                         if image_data.startswith('data:image') or len(image_data) > 100:
                             # Base64
@@ -190,36 +188,36 @@ def predict():
                             img_bytes = base64.b64decode(image_data)
                             gemini_image = Image.open(io.BytesIO(img_bytes))
                         else:
-                            # 檔案路徑
+                            # 瑼?頝臬?
                             gemini_image = Image.open(image_data)
                     else:
                         gemini_image = Image.fromarray(np.array(image_data))
                     
-                    # 呼叫 Gemini API (傳遞本地預測結果與信心值，供 Gemini 參考)
+                    # ?澆 Gemini API (?喲??砍?葫蝯??縑敹潘?靘?Gemini ??
                     gemini_result = gemini_fallback.classify_with_gemini(
                         image_input=gemini_image,
                         local_prediction=final_class,
                         local_confidence=final_confidence
                     )
                     
-                    # 如果 Gemini 成功，使用其結果
+                    # 憒? Gemini ??嚗蝙?典蝯?
                     if gemini_result["status"] == "success":
                         final_class = gemini_result["class"]
                         final_confidence = gemini_result["confidence"]
                         gemini_reasoning = gemini_result["reasoning"]
-                        print(f"[Server] Gemini 備援完成: {final_class} (信心值: {final_confidence:.2f})")
+                        print(f"[Server] Gemini ?摰?: {final_class} (靽∪??? {final_confidence:.2f})")
                     else:
                         gemini_reasoning = gemini_result["reasoning"]
-                        print(f"[Server] Gemini 備援失敗: {gemini_reasoning}")
+                        print(f"[Server] Gemini ?憭望?: {gemini_reasoning}")
                 else:
-                    gemini_reasoning = "無影像資料，無法使用 Gemini Vision"
+                    gemini_reasoning = "?∪蔣?????⊥?雿輻 Gemini Vision"
                     print(f"[Server] {gemini_reasoning}")
             except Exception as e:
-                gemini_reasoning = f"Gemini API 錯誤: {str(e)}"
+                gemini_reasoning = f"Gemini API ?航炊: {str(e)}"
                 print(f"[Server] {gemini_reasoning}")
         
-        # 7. 封裝回傳結果
-        # 對應計畫書中的 JSON 格式 [cite: 163, 200, 236]
+        # 7. 撠??蝯?
+        # 撠?閮?訾葉??JSON ?澆?
         response = {
             "event_id": event_id,
             "class": final_class,
@@ -230,16 +228,16 @@ def predict():
             "vision_confidence": round(fusion_result.get("vision_confidence", 0.0), 3),
             "audio_class": fusion_result.get("audio_class", "unknown"),
             "audio_confidence": round(fusion_result.get("audio_confidence", 0.0), 3),
-            "reasoning": gemini_reasoning if use_gemini else "本地模型推論成功",
+            "reasoning": gemini_reasoning if use_gemini else "?砍璅∪??刻???",
             "timestamp": time.time()
         }
         
-        print(f"[Server] 回傳結果: {final_class} (信心值: {final_confidence:.2f})")
+        print(f"[Server] ?蝯?: {final_class} (靽∪??? {final_confidence:.2f})")
         return jsonify(response)
         
     except Exception as e:
-        # 錯誤處理 [cite: 47, 91]
-        print(f"[Server] 伺服器錯誤: {e}")
+        # ?航炊??
+        print(f"[Server] 隡箸??券隤? {e}")
         return jsonify({
             "error": str(e),
             "status": "error"
@@ -249,7 +247,7 @@ def predict():
 @app.route('/health', methods=['GET'])
 def health():
     """
-    健康檢查端點 (用於監控與除錯)
+    ?亙熒瑼Ｘ蝡舫? (?冽?????
     """
     return jsonify({
         "status": "healthy",
@@ -267,9 +265,9 @@ def health():
 @app.route('/config', methods=['POST'])
 def update_config():
     """
-    動態更新實驗參數 (用於實驗調整)
+    ???湔撖阡?? (?冽撖阡?隤踵)
     
-    請求格式:
+    隢??澆?:
     {
         "vision_weight": 0.7,
         "audio_weight": 0.3,
@@ -279,22 +277,21 @@ def update_config():
     try:
         data = request.json
         if not data:
-            return jsonify({"error": "無請求資料"}), 400
+            return jsonify({"error": "?∟?瘙???}), 400
         
-        # 更新融合權重
+        # ?湔??甈?
         if "vision_weight" in data and "audio_weight" in data:
             fusion_logic.update_weights(
                 data["vision_weight"],
                 data["audio_weight"]
             )
         
-        # 更新信心度閾值
-        if "confidence_threshold" in data:
+        # ?湔靽∪?摨阡??        if "confidence_threshold" in data:
             gemini_fallback.update_threshold(data["confidence_threshold"])
         
         return jsonify({
             "status": "success",
-            "message": "配置已更新",
+            "message": "?蔭撌脫??,
             "current_weights": {
                 "vision": fusion_logic.vision_weight,
                 "audio": fusion_logic.audio_weight
@@ -310,10 +307,11 @@ def update_config():
 
 
 if __name__ == '__main__':
-    # 啟動伺服器，監聽所有 IP 的 5000 端口
-    # 請確保 PC 與 Raspberry Pi 在同一個區域網路 (LAN) [cite: 197]
-    print("[Server] 啟動 PC 層推論伺服器...")
-    print(f"[Server] 監聽地址: http://0.0.0.0:5000")
-    print(f"[Server] 融合權重 - Vision: {VISION_WEIGHT}, Audio: {AUDIO_WEIGHT}")
-    print(f"[Server] 信心度閾值: {CONFIDENCE_THRESHOLD}")
+    # ??隡箸??剁??????IP ??5000 蝡臬
+    # 隢Ⅱ靽?PC ??Raspberry Pi ?典?銝???雯頝?(LAN)
+    print("[Server] ?? PC 撅斗隢撩?...")
+    print(f"[Server] ???啣?: http://0.0.0.0:5000")
+    print(f"[Server] ??甈? - Vision: {VISION_WEIGHT}, Audio: {AUDIO_WEIGHT}")
+    print(f"[Server] 靽∪?摨阡?? {CONFIDENCE_THRESHOLD}")
     app.run(host='0.0.0.0', port=5000, debug=True)
+

@@ -11,10 +11,23 @@ PC Client - 與 PC 推論伺服器通訊
 技術棧: Python, requests
 """
 
+import os
 import requests
 import time
 from typing import Dict, Optional, Tuple
 import base64
+try:
+    from env_loader import load_env
+except ImportError:
+    import sys
+    import os
+    parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if parent_dir not in sys.path:
+        sys.path.insert(0, parent_dir)
+    from env_loader import load_env
+
+# 載入環境變數設定
+load_env()
 
 class PCClient:
     """
@@ -23,17 +36,25 @@ class PCClient:
     負責與 PC 層的 HTTP/JSON 通訊
     """
     
-    def __init__(self, pc_host: str = "100.85.67.115", pc_port: int = 5000):
+    def __init__(self, pc_host: str = None, pc_port: int = None):
         """
-        初始化 PC 客戶端
+        初始化 PC 客戶端 (優先從環境變數讀取)
         
         Args:
             pc_host: PC 推論伺服器的 IP 地址
             pc_port: PC 推論伺服器的端口
         """
-        self.pc_host = pc_host
-        self.pc_port = pc_port
-        self.base_url = f"http://{pc_host}:{pc_port}"
+        self.pc_host = pc_host or os.getenv("PC_SERVER_IP", "100.85.67.115")
+        
+        env_port = os.getenv("PC_SERVER_PORT")
+        if pc_port is not None:
+            self.pc_port = pc_port
+        elif env_port:
+            self.pc_port = int(env_port)
+        else:
+            self.pc_port = 5000
+            
+        self.base_url = f"http://{self.pc_host}:{self.pc_port}"
         self.timeout = 10.0  # 請求超時時間 (秒)
     
     def send_inference_request(
@@ -43,17 +64,18 @@ class PCClient:
         event_id: Optional[str] = None
     ) -> Tuple[bool, Optional[Dict]]:
         """
-        發送推論請求給 PC 伺服器
+        發送推論請求給 PC 伺服器 (使用 multipart/form-data 傳送影像與音訊頻譜圖)
         
         Args:
-            image_data: 影像資料 (bytes)
-            audio_data: 音訊資料 (bytes)
+            image_data: 影像二進位資料 (bytes)
+            audio_data: 音訊頻譜圖二進位資料 (bytes, 即 Mel-spectrogram 影像)
             event_id: 事件 ID (可選)
         
         Returns:
             (success: bool, result: Optional[Dict])
             result 格式: {
-                "class": "Paper",
+                "label": "paper",
+                "class": "paper",       # 向後相容欄位
                 "confidence": 0.95,
                 "is_gemini": false,
                 "reasoning": "..." 
@@ -62,28 +84,31 @@ class PCClient:
         if not event_id:
             event_id = f"event_{int(time.time())}"
         
-        # 構建請求包含 image 與 audio (Base64)
-        payload = {
-            "image": base64.b64encode(image_data).decode('utf-8') if image_data else None,
-            "audio": base64.b64encode(audio_data).decode('utf-8') if audio_data else None,
-            #"audio": None, # [Debug] Disable audio
-            "event_id": event_id,
-            "timestamp": time.time()
-        }
-        
+        # 構建 multipart/form-data 請求檔案字典
+        files = {}
+        if image_data:
+            files["image"] = ("image.jpg", image_data, "image/jpeg")
+        if audio_data:
+            files["audio_spec"] = ("audio_spec.jpg", audio_data, "image/jpeg")
+            
         try:
-            # 發送 HTTP POST 請求
+            # 發送 HTTP POST 請求 (使用 files 參數發送 multipart/form-data)
             print(f"[PC Client] Sending request to {self.base_url}/predict...")
             response = requests.post(
                 f"{self.base_url}/predict",
-                json=payload,
+                files=files,
                 timeout=self.timeout
             )
             
             if response.status_code == 200:
                 result = response.json()
-                # 簡單驗證回傳格式
-                if "class" in result and "confidence" in result:
+                # 簡單驗證回傳格式 (同時相容 label 與 class)
+                if ("label" in result or "class" in result) and "confidence" in result:
+                    # 雙向相容處理
+                    if "label" in result and "class" not in result:
+                        result["class"] = result["label"]
+                    elif "class" in result and "label" not in result:
+                        result["label"] = result["class"]
                     return (True, result)
                 else:
                     print(f"[PC Client] 錯誤: 回傳格式不符 {result.keys()}")

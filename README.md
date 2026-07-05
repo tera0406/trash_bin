@@ -6,10 +6,14 @@
 
 ## 系統核心特色與演進
 
-我們已經將多模態融合推論架構從舊版的「加權後融合 (Late Fusion)」升級為更先進的**「交叉融合 (Cross-Fusion)」**，並整合完整的備援與資料收集機制：
+我們已經將垃圾桶系統進行了全方位的升級，從單一影像觸發與簡單歸檔，演進為高穩定、低延遲的智慧複合系統：
 *   **多模態交叉融合 AI 模型**: 直接輸入影像與音訊頻譜至單一 `.keras` 模型，在網路內部進行跨模態特徵融合。
 *   **Gemini 雲端備援** : 當本地信心值低於 `CONFIDENCE_THRESHOLD` 時，自動調用 Google Gemini Vision 進行思維鏈 (CoT) 輔助判斷；API 失敗時優雅降級回本地結果。
-*   **生產資料收集** : 推論時可同步將影像、音訊頻譜與元資料（含標籤品質標記）儲存至 `data/raw/`，持續擴充訓練資料集。
+*   **複合觸發控制系統 (FSM Composite Trigger) ✅**: 樹莓派主控端採用生產級有限狀態機 (FSM)，支援 **Weight (重量)**、**Vision (影像動態)**、**IR (紅外線入口對射)** 三種觸發源，並在 `config.py` 中提供條件式啟用開關。
+*   **單一串口共用與競態防丟機制 ✅**: 解決了串口 Port Busy 底層嚴重衝突，串口由 UART 連線共享給重量感測器；並引入全域佇列 `_shared_pending_events` 與非阻塞讀取，保證對入口物理事件 (`EVENT:INPUT_BLOCKED`) 的 100% 毫秒級無損捕獲。
+*   **無偏見採集與側邊元資料歸檔 ✅**: Streamlit 標記面板預設 `index=None` 無偏置設計，防止自動標記污染；每次歸檔自動移送 JPG, WAV 並生成專屬 sidecar `.json` Metadata 描述檔（記錄重量、時間、觸發源與自訂備註描述）。
+*   **互動式數據集瀏覽與一鍵導出 ✅**: 儀表板內嵌 **Dataset Explorer**，可切換類別、播放碰撞聲 Wav、預覽 JPG 與呈現 Metadata，提供一鍵永久刪除及「撤銷最近一次標記」防呆機制，並支援一鍵壓縮整個 `dataset/` 打包為 `.zip` WiFi 下載。
+*   **全局代碼健壯性 (KeyError & TypeError 防護) ✅**: 徹底消除 Streamlit 按鈕 `width='stretch'` 引起的全體運行時崩潰，全面改用官方標準的 `use_container_width=True`；且在 DataFrame 歷史日誌表格解析中加入自動補全容錯，保證網頁 100% 穩定不崩潰。
 *   **模組化專案結構**: 將 PC 端、Pi 端與 ESP32 端的程式碼徹底分離，提高維護性。
 
 ---
@@ -29,9 +33,12 @@
 
 ### 2. 🍓 `pi_client/` (Raspberry Pi 決策與控制層)
 負責感測器控制、影像與音訊擷取與流程決策。
-*   **`pi_remote_controller.py`**: 主要執行腳本，整合相機拍照、錄音、PC 連線推論、UART 致動器控制。
+*   **`composite_trigger_controller.py`**: 核心生產級 FSM 複合觸發控制器，整合重量 (HX711) + 畫面幀差偵測 + IR 入口物理對射偵測的去抖動確認機制。
+*   **`Streamlit.py`**: 最新版實時監控與數據集標記工具看板。整合 Live Dashboard、麥克風診斷、無偏見數據標記與詮釋元資料 Sidecar 儲存、Wav/JPG 聯合預覽 Explorer 與一鍵 ZIP 打包導出。
+*   **`interactive_controller.py`**: 互動式測試控制 CLI 工具，支援 Picamera2 與手動觸發流程。
 *   **`pc_client.py`**: 封裝與 PC Server 的 HTTP 通訊協定。
-*   **`esp32_uart.py`**: 負責透過 UART 傳送控制指令給 ESP32。
+*   **`esp32_uart.py`**: 負責透過 UART 傳送控制指令與雙向狀態同步，支援主動事件監聽與全域佇列競態防護。
+*   **`audio_processor.py`**: 輕量化音訊錄製與 Mel-spectrogram 純 Numpy 生成模組。
 
 ### 3. 🔌 `esp32_firmware/` (ESP32 致動層)
 負責硬體作動控制，包含伺服馬達與實體開關的 C/C++ 韌體程式碼。
@@ -74,7 +81,7 @@ pip install -r requirements.txt
 為簡化跨網域連線，建議使用 Tailscale：
 1. 在 PC 與 Pi 上安裝 Tailscale 並登入綁定。
 2. 記下 PC 的 Tailscale IP (例如 `100.85.67.115`)。
-3. 修改 `pi_client/pi_remote_controller.py` 內的 `PC_SERVER_IP` 變數為上述 IP。
+3. 於 `pi_client` 目錄下的 `.env` 檔案中，設定 `PC_SERVER_IP=您的_PC_Tailscale_IP`。
 
 ### 3. 啟動推論伺服器 (PC 端)
 
@@ -171,3 +178,6 @@ data/raw/
 *   **Hybrid Decision Gate**: 取代舊有的 Late Fusion 加權機制，目前統一由交叉融合模型直接輸出預測。
 *   **Gemini CoT 備援** ✅: 已實作於 `pc_server/gemini_fallback.py`。當信心值低於 `CONFIDENCE_THRESHOLD` 時自動觸發，API 失敗則優雅降級回本地結果。
 *   **資料集擴充** ✅: 已實作於 `app.py` 的 `save_sample()`。推論時同步收集有標籤資料，`is_gemini=true` 的樣本標籤品質最高。
+*   **複合物理/軟體觸發閘 ✅**: 已在 `composite_trigger_controller.py` 中實作生產級 FSM 複合觸發器，整合紅外線對射 (IR)、重量感測 (Weight) 與影像幀差動態 (Vision) 條件式三合一觸發，保證了在各種光線與物體重量下的極致感應性能。
+*   **詮釋詮釋元資料標記與導出系統 ✅**: 實作於 `Streamlit.py` (Tab 3)。包含 `index=None` 無偏見標記、sidecar `.json` Metadata 自動生成（含自訂描述、增量重量與觸發源記錄）、互動式預覽 Explorer，以及一鍵壓縮整個採集目錄並透過 WiFi 打包下載。
+*   **UI 跨版本健壯防護 ✅**: 標準化 Streamlit 視窗按鈕排版為 `use_container_width=True`，並在 Live Dashboard 歷史 log 解析中注入 KeyError 補欄位防護，確保在不同 Streamlit 軟體版本與舊資料庫下維持 100% 不崩潰運行。

@@ -20,14 +20,25 @@ from typing import Dict, Optional, Union, Any
 from PIL import Image
 from google import genai
 from google.genai import types
+from pydantic import BaseModel, Field
 
 # 垃圾分類類別定義 (與本地模型一致)
-CLASS_LABELS = ["general", "plastic", "paper", "metal"]
+CLASSES_ENV = os.getenv("CLASSES")
+if CLASSES_ENV:
+    CLASS_LABELS = [c.strip() for c in CLASSES_ENV.split(",")]
+else:
+    CLASS_LABELS = ["general", "plastic", "paper", "metal"]
 
 # 預設參數
-DEFAULT_CONFIDENCE_THRESHOLD = 0.50
-DEFAULT_MODEL_NAME = "gemini-2.0-flash"
-DEFAULT_TIMEOUT = 15.0
+DEFAULT_CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", "0.50"))
+DEFAULT_MODEL_NAME = os.getenv("GEMINI_MODEL_NAME", "gemini-2.0-flash")
+DEFAULT_TIMEOUT = float(os.getenv("GEMINI_TIMEOUT", "15.0"))
+
+
+class GarbageClassification(BaseModel):
+    label: str = Field(description="The garbage category, MUST be one of: 'paper', 'plastic', 'general', 'metal' (all lowercase)")
+    confidence: float = Field(description="Confidence value between 0.0 and 1.0 representing the model's certainty")
+    reasoning: str = Field(description="Brief explanation of the classification decision (within 50 words)")
 
 
 class GeminiFallback:
@@ -65,10 +76,12 @@ class GeminiFallback:
             except Exception as e:
                 print(f"[GeminiFallback] 初始化失敗: {e}")
 
-        # 建立 GenerateContentConfig (與 legacy 版一致)
+        # 建立 GenerateContentConfig (啟用 JSON 結構化輸出)
         self._config = types.GenerateContentConfig(
             temperature=0.3,
-            max_output_tokens=512,
+            max_output_tokens=1024,
+            response_mime_type="application/json",
+            response_schema=GarbageClassification,
             safety_settings=[
                 types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="BLOCK_NONE"),
                 types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_NONE"),
@@ -153,10 +166,10 @@ class GeminiFallback:
             elapsed = time.time() - start
 
             # 解析回應
-            if not response or not response.text:
-                return self._local_fallback(local_label, local_confidence, "no_text_response")
+            if not response:
+                return self._local_fallback(local_label, local_confidence, "no_response")
 
-            return self._parse_response(response.text, elapsed)
+            return self._parse_response(response, elapsed)
 
         except Exception as e:
             elapsed = time.time() - start
@@ -231,8 +244,42 @@ class GeminiFallback:
 
         return "\n".join(lines)
 
-    def _parse_response(self, text: str, response_time: float) -> Dict[str, Any]:
-        """解析 Gemini 回應文字，轉為標準格式"""
+    def _parse_response(self, response, response_time: float) -> Dict[str, Any]:
+        """解析 Gemini 回應，轉為標準格式"""
+        
+        # 優先使用 SDK 自動解析的 Pydantic 物件
+        if hasattr(response, "parsed") and response.parsed:
+            try:
+                data = response.parsed
+                label = str(data.label).lower()
+                confidence = float(data.confidence)
+                reasoning = str(data.reasoning)
+                
+                # 驗證 label
+                if label not in CLASS_LABELS:
+                    for cls in CLASS_LABELS:
+                        if cls in label or cls in reasoning.lower():
+                            label = cls
+                            break
+                    else:
+                        label = "general"
+                
+                confidence = max(0.0, min(1.0, confidence))
+                print(f"[GeminiFallback] 結構化解析成功 | label={label}, confidence={confidence:.3f}, 耗時={response_time:.2f}s")
+                return {
+                    "label": label,
+                    "confidence": confidence,
+                    "reasoning": reasoning,
+                    "is_gemini": True,
+                    "status": "success",
+                    "model_used": self.model_name,
+                    "response_time_ms": round(response_time * 1000, 1),
+                }
+            except Exception as parse_err:
+                print(f"[GeminiFallback] 結構化屬性讀取錯誤，將使用文字解析: {parse_err}")
+
+        # 備用: 傳統文字解析
+        text = response.text or ""
         json_text = text.strip()
 
         # 移除可能的 markdown 程式碼區塊

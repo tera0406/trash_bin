@@ -1,14 +1,14 @@
-"""
-Audio Engine - 音訊頻譜分析引擎
-對應計畫書: [cite: 243, 244, 246]
+﻿"""
+Audio Engine - ?唾??餉???撘?
+撠?閮??
 
-職責:
-- 接收音訊片段 (WAV/MP3 或原始音訊資料)
-- 提取 MFCC (Mel-Frequency Cepstral Coefficients) 特徵
-- 使用 CNN 模型進行分類推論
-- 回傳分類結果與信心值 [cite: 127, 200]
+?瑁痊:
+- ?交?唾??挾 (WAV/MP3 ??憪閮???
+- ?? MFCC (Mel-Frequency Cepstral Coefficients) ?孵噩
+- 雿輻 CNN 璅∪??脰????刻?
+- ???蝯??縑敹?
 
-硬體限制: 僅在 PC 層執行，Pi 層禁止執行 AI 推論
+蝖祇??: ? PC 撅文銵?Pi 撅斤?甇Ｗ銵?AI ?刻?
 """
 
 import numpy as np
@@ -19,16 +19,16 @@ from typing import Dict, Optional, Union
 import io
 import soundfile as sf
 
-# 垃圾分類類別定義 [cite: 152] (與 vision_engine 一致)
+# ???憿摰儔 (??vision_engine 銝??
 CLASS_CATEGORIES = ["Paper", "Plastic", "General", "Metal"]
 
 class AudioEngine:
     """
-    音訊頻譜分析引擎
+    ?唾??餉???撘?
     
-    使用 MFCC 特徵提取 + CNN 模型進行音訊分類
-    輸入: 音訊波形 (預設 2 秒，22050 Hz 採樣率)
-    輸出: 類別名稱與信心值
+    雿輻 MFCC ?孵噩?? + CNN 璅∪??脰??唾???
+    頛詨: ?唾?瘜Ｗ耦 (?身 2 蝘?22050 Hz ?⊥見??
+    頛詨: 憿?迂?縑敹?
     """
     
     def __init__(
@@ -39,13 +39,13 @@ class AudioEngine:
         n_mfcc: int = 13
     ):
         """
-        初始化音訊引擎
+        ???閮???
         
         Args:
-            model_path: 預訓練模型路徑 (若為 None 則使用預設架構)
-            sample_rate: 音訊採樣率 (Hz)
-            duration: 音訊片段長度 (秒)
-            n_mfcc: MFCC 特徵數量
+            model_path: ??蝺湔芋?楝敺?(?亦 None ?蝙?券?閮剜瑽?
+            sample_rate: ?唾??⊥見??(Hz)
+            duration: ?唾??挾?瑕漲 (蝘?
+            n_mfcc: MFCC ?孵噩?賊?
         """
         self.sample_rate = sample_rate
         self.duration = duration
@@ -53,132 +53,132 @@ class AudioEngine:
         self.model = None
         self.model_path = model_path
         
-        # 計算預期的音訊長度
+        # 閮????閮摨?
         self.expected_length = int(sample_rate * duration)
         
-        # 載入或建立模型
+        # 頛?遣蝡芋??
         self._load_model()
     
     def _load_model(self):
         """
-        載入音訊 CNN 模型
+        頛?唾? CNN 璅∪?
         
-        若 model_path 為 None，則建立一個新的模型架構 (用於開發測試)
-        實際部署時應載入已訓練的模型權重
+        ??model_path ??None嚗?撱箇?銝??芋?瑽?(?冽?皜祈岫)
+        撖阡??函蔡??頛撌脰?蝺渡?璅∪?甈?
         """
         if self.model_path:
             try:
-                # 載入已訓練的模型 [cite: 243, 244]
+                # 頛撌脰?蝺渡?璅∪?
                 self.model = keras.models.load_model(self.model_path)
-                print(f"[Audio] 已載入模型: {self.model_path}")
+                print(f"[Audio] 撌脰??交芋?? {self.model_path}")
             except Exception as e:
-                print(f"[Audio] 警告: 無法載入模型 {self.model_path}: {e}")
-                print("[Audio] 使用預設架構...")
+                print(f"[Audio] 霅血?: ?⊥?頛璅∪? {self.model_path}: {e}")
+                print("[Audio] 雿輻?身?嗆?...")
                 self._create_default_model()
         else:
-            # 建立預設模型架構 (用於開發階段)
+            # 撱箇??身璅∪??嗆? (?冽??挾)
             self._create_default_model()
     
     def _create_default_model(self):
         """
-        建立預設的 CNN 模型架構 (用於 MFCC 特徵分類)
+        撱箇??身??CNN 璅∪??嗆? (?冽 MFCC ?孵噩??)
         
-        注意: 此模型未經訓練，僅用於架構測試
-        實際使用時必須載入已訓練的權重
+        瘜冽?: 甇斗芋?蝬?蝺湛???潭瑽葫閰?
+        撖阡?雿輻?????亙歇閮毀????
         
-        架構設計:
-        - 輸入: MFCC 特徵圖 (時間軸 x 頻率軸)
-        - 使用 2D CNN 層提取時頻特徵
-        - 輸出: 4 類垃圾分類
+        ?嗆?閮剛?:
+        - 頛詨: MFCC ?孵噩??(??頠?x ?餌?頠?
+        - 雿輻 2D CNN 撅斗????餌敺?
+        - 頛詨: 4 憿??曉?憿?
         """
-        # MFCC 特徵圖的典型尺寸: (時間幀數, n_mfcc)
-        # 假設 2 秒音訊，hop_length=512，約有 87 個時間幀
-        # 實際尺寸會根據音訊長度與 hop_length 調整
-        time_frames = int(self.duration * self.sample_rate / 512)  # 估算
+        # MFCC ?孵噩???詨?撠箏站: (??撟?? n_mfcc)
+        # ?身 2 蝘閮?hop_length=512嚗???87 ????
+        # 撖阡?撠箏站??閮摨西? hop_length 隤踵
+        time_frames = int(self.duration * self.sample_rate / 512)  # 隡啁?
         
-        # 建立 CNN 模型
+        # 撱箇? CNN 璅∪?
         inputs = keras.Input(shape=(time_frames, self.n_mfcc, 1))
         
-        # 第一層 CNN: 提取局部時頻特徵
+        # 蝚砌?撅?CNN: ??撅?冽??餌敺?
         x = keras.layers.Conv2D(32, (3, 3), activation='relu', padding='same')(inputs)
         x = keras.layers.MaxPooling2D((2, 2))(x)
         
-        # 第二層 CNN: 提取更高層特徵
+        # 蝚砌?撅?CNN: ???湧?撅斤敺?
         x = keras.layers.Conv2D(64, (3, 3), activation='relu', padding='same')(x)
         x = keras.layers.MaxPooling2D((2, 2))(x)
         
-        # 第三層 CNN
+        # 蝚砌?撅?CNN
         x = keras.layers.Conv2D(128, (3, 3), activation='relu', padding='same')(x)
         x = keras.layers.GlobalAveragePooling2D()(x)
         
-        # 全連接層
+        # ?券?撅?
         x = keras.layers.Dense(64, activation='relu')(x)
         x = keras.layers.Dropout(0.3)(x)
         
-        # 輸出層: 4 個類別 [cite: 152]
+        # 頛詨撅? 4 ????
         outputs = keras.layers.Dense(len(CLASS_CATEGORIES), activation='softmax')(x)
         
         self.model = keras.Model(inputs, outputs)
-        print(f"[Audio] 已建立預設 CNN 架構 (未訓練, 輸入尺寸: {time_frames}x{self.n_mfcc})")
+        print(f"[Audio] 撌脣遣蝡?閮?CNN ?嗆? (?芾?蝺? 頛詨撠箏站: {time_frames}x{self.n_mfcc})")
     
     def preprocess_audio(self, audio_input: Union[str, np.ndarray, bytes]) -> np.ndarray:
         """
-        音訊預處理
+        ?唾?????
         
-        將輸入音訊轉換為模型所需的 MFCC 特徵:
-        1. 載入音訊 (支援多種格式)
-        2. 重採樣至指定採樣率
-        3. 調整長度至固定時長
-        4. 提取 MFCC 特徵 [cite: 243]
+        撠撓?仿閮??璅∪?????MFCC ?孵噩:
+        1. 頛?唾? (?舀憭車?澆?)
+        2. ?璅????⊥見??
+        3. 隤踵?瑕漲?喳摰???
+        4. ?? MFCC ?孵噩
         
         Args:
-            audio_input: 可以是以下格式:
-                - 檔案路徑字串 (WAV, MP3 等)
-                - numpy array (音訊波形)
-                - bytes (原始音訊資料)
+            audio_input: ?臭誑?臭誑銝撘?
+                - 瑼?頝臬?摮葡 (WAV, MP3 蝑?
+                - numpy array (?唾?瘜Ｗ耦)
+                - bytes (???唾?鞈?)
         
         Returns:
-            MFCC 特徵圖 (time_frames, n_mfcc, 1) - 已擴展維度供模型使用
+            MFCC ?孵噩??(time_frames, n_mfcc, 1) - 撌脫撅雁摨虫?璅∪?雿輻
         """
         try:
-            # 處理不同輸入格式
+            # ??銝?頛詨?澆?
             if isinstance(audio_input, str):
-                # 檔案路徑
+                # 瑼?頝臬?
                 y, sr = librosa.load(audio_input, sr=self.sample_rate, duration=self.duration)
             elif isinstance(audio_input, bytes):
-                # 原始音訊資料 (bytes)
+                # ???唾?鞈? (bytes)
                 y, sr = sf.read(io.BytesIO(audio_input), samplerate=self.sample_rate)
-                # 轉換為單聲道
+                # 頧??箏?脤?
                 if len(y.shape) > 1:
                     y = np.mean(y, axis=1)
-                # 限制長度
+                # ??瑕漲
                 if len(y) > self.expected_length:
                     y = y[:self.expected_length]
             elif isinstance(audio_input, np.ndarray):
                 # numpy array
                 y = audio_input
-                # 假設已為正確採樣率，若需要可進行重採樣
+                # ?身撌脩甇?Ⅱ?⊥見???仿?閬?脰??璅?
                 if len(y) > self.expected_length:
                     y = y[:self.expected_length]
                 elif len(y) < self.expected_length:
-                    # 零填充
+                    # ?嗅‵??
                     y = np.pad(y, (0, self.expected_length - len(y)), mode='constant')
             else:
-                raise ValueError(f"不支援的音訊格式: {type(audio_input)}")
+                raise ValueError(f"銝?渡??唾??澆?: {type(audio_input)}")
             
-            # 確保為單聲道
+            # 蝣箔??箏?脤?
             if len(y.shape) > 1:
                 y = np.mean(y, axis=1)
             
-            # 調整長度至固定時長
+            # 隤踵?瑕漲?喳摰???
             if len(y) > self.expected_length:
                 y = y[:self.expected_length]
             elif len(y) < self.expected_length:
                 y = np.pad(y, (0, self.expected_length - len(y)), mode='constant')
             
-            # 提取 MFCC 特徵 [cite: 243]
-            # n_mfcc: MFCC 係數數量
-            # hop_length: 時間解析度 (較小值 = 更高時間解析度)
+            # ?? MFCC ?孵噩
+            # n_mfcc: MFCC 靽?賊?
+            # hop_length: ??閫??摨?(頛???= ?湧???閫??摨?
             mfccs = librosa.feature.mfcc(
                 y=y,
                 sr=self.sample_rate,
@@ -186,48 +186,48 @@ class AudioEngine:
                 hop_length=512
             )
             
-            # 轉置: (n_mfcc, time_frames) -> (time_frames, n_mfcc)
+            # 頧蔭: (n_mfcc, time_frames) -> (time_frames, n_mfcc)
             mfccs = mfccs.T
             
-            # 擴展維度以符合模型輸入 (batch_size, time_frames, n_mfcc, 1)
+            # ?游?蝬剖漲隞亦泵?芋?撓??(batch_size, time_frames, n_mfcc, 1)
             mfccs = np.expand_dims(mfccs, axis=0)  # batch dimension
             mfccs = np.expand_dims(mfccs, axis=-1)  # channel dimension
             
             return mfccs
             
         except Exception as e:
-            raise ValueError(f"音訊預處理錯誤: {e}")
+            raise ValueError(f"?唾????隤? {e}")
     
     def predict(self, audio_input: Union[str, np.ndarray, bytes]) -> Dict[str, any]:
         """
-        執行音訊分類推論
+        ?瑁??唾????刻?
         
-        對應計畫書中的音訊 CNN 推論流程 [cite: 243, 244, 246]
+        撠?閮?訾葉?閮?CNN ?刻?瘚?
         
         Args:
-            audio_input: 音訊輸入 (支援多種格式，見 preprocess_audio)
+            audio_input: ?唾?頛詨 (?舀憭車?澆?嚗? preprocess_audio)
         
         Returns:
             {
-                "class": "Class A",           # 預測類別
-                "confidence": 0.95,           # 信心值 [cite: 127, 200]
-                "all_probs": {...},           # 所有類別的機率分佈
-                "status": "success"           # 狀態碼
+                "class": "Class A",           # ?葫憿
+                "confidence": 0.95,           # 靽∪???
+                "all_probs": {...},           # ????亦?璈???
+                "status": "success"           # ??Ⅳ
             }
         """
         try:
-            # 1. 預處理音訊 (提取 MFCC 特徵)
+            # 1. ???閮?(?? MFCC ?孵噩)
             mfcc_features = self.preprocess_audio(audio_input)
             
-            # 2. 模型推論
+            # 2. 璅∪??刻?
             predictions = self.model.predict(mfcc_features, verbose=0)
             
-            # 3. 取得最高機率的類別與信心值
+            # 3. ???擃???憿?縑敹?
             class_idx = np.argmax(predictions[0])
             confidence = float(predictions[0][class_idx])
             predicted_class = CLASS_CATEGORIES[class_idx]
             
-            # 4. 建立所有類別的機率分佈字典
+            # 4. 撱箇?????亦?璈???摮
             all_probs = {
                 CLASS_CATEGORIES[i]: float(predictions[0][i])
                 for i in range(len(CLASS_CATEGORIES))
@@ -241,8 +241,8 @@ class AudioEngine:
             }
             
         except Exception as e:
-            # 錯誤處理: 回傳錯誤狀態 [cite: 47, 91]
-            print(f"[Audio] 推論錯誤: {e}")
+            # ?航炊??: ??航炊???
+            print(f"[Audio] ?刻??航炊: {e}")
             return {
                 "class": "unknown",
                 "confidence": 0.0,
@@ -252,7 +252,7 @@ class AudioEngine:
     
     def get_model_info(self) -> Dict[str, any]:
         """
-        取得模型資訊 (用於除錯與監控)
+        ??璅∪?鞈? (?冽?日???
         """
         if self.model is None:
             return {"status": "model_not_loaded"}
@@ -268,16 +268,17 @@ class AudioEngine:
         }
 
 
-# 全域實例 (單例模式，避免重複載入模型)
+# ?典?撖虫? (?桐?璅∪?嚗??銴??交芋??
 _audio_engine_instance = None
 
 def get_audio_engine(model_path: Optional[str] = None) -> AudioEngine:
     """
-    取得 AudioEngine 單例實例
+    ?? AudioEngine ?桐?撖虫?
     
-    避免重複載入模型，節省記憶體與載入時間
+    ?踹???頛璅∪?嚗????園????交???
     """
     global _audio_engine_instance
     if _audio_engine_instance is None:
         _audio_engine_instance = AudioEngine(model_path=model_path)
     return _audio_engine_instance
+

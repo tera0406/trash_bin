@@ -83,6 +83,7 @@ venv.bak/
 *.pth
 *.ckpt
 *.weights
+*.keras
 
 # 模型目錄 (可選)
 pc_inference/models/*.h5
